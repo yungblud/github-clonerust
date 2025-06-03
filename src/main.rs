@@ -1,5 +1,7 @@
+use std::env;
+
 use clap::Parser;
-use git2::{build, Cred, FetchOptions, RemoteCallbacks, Repository};
+use git2::{Cred, FetchOptions, RemoteCallbacks, Repository};
 use reqwest::header::{HeaderMap, USER_AGENT};
 use serde::Deserialize;
 use dialoguer::Input;
@@ -8,9 +10,6 @@ use dialoguer::Input;
 struct Args {
     #[arg(short, long)]
     org: String,
-
-    #[arg(short, long)]
-    token: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -36,17 +35,32 @@ fn clone_with_auth(url: &str, path: &str, token: &str) -> Result<Repository, git
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut github_token: String;
+    match env::var("GITHUB_TOKEN") {
+        Ok(token) => {
+            github_token = token;
+        },
+        Err(_) => {
+            let token_input: String = Input::new()
+            .with_prompt("Enter the token")
+            .interact_text()?;
+            // TODO: ~/.zshrc에 덮어쓰는 것으로 변경
+            unsafe {
+                env::set_var("GITHUB_TOKEN", &token_input);
+            }
+            github_token = token_input;
+        }
+    };
+
     let args = Args::parse();
 
     let mut headers = HeaderMap::new();
     headers.insert(USER_AGENT, "rust-cli/0.1".parse().unwrap());
 
-    if let Some(token) = &args.token {
-        headers.insert(
-            reqwest::header::AUTHORIZATION,
-            format!("token {}", token).parse().unwrap(),
-        );
-    }
+    headers.insert(
+        reqwest::header::AUTHORIZATION,
+        format!("token {}", github_token).parse().unwrap(),
+    );
 
     let max_per_page = 100;
 
@@ -65,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(repo) = repos.iter().find(|repo| repo.name == input) {
         println!("Cloning: {}", repo.name);
         // TODO: token 관련 unwrap이 실제 Option 타입과 맞지 않음
-        clone_with_auth(&repo.clone_url, &repo.name, args.token.as_deref().unwrap())?;
+        clone_with_auth(&repo.clone_url, &repo.name, &github_token)?;
     } else {
         println!("!Repo not found");
     }
