@@ -1,5 +1,5 @@
 use clap::Parser;
-use git2::Repository;
+use git2::{build, Cred, FetchOptions, RemoteCallbacks, Repository};
 use reqwest::header::{HeaderMap, USER_AGENT};
 use serde::Deserialize;
 use dialoguer::Input;
@@ -17,6 +17,21 @@ struct Args {
 struct Repo {
     name: String,
     clone_url: String,
+}
+
+fn clone_with_auth(url: &str, path: &str, token: &str) -> Result<Repository, git2::Error> {
+    let mut cb = RemoteCallbacks::new();
+    cb.credentials(move |_url, _username_from_url, _allowed_types| {
+        Cred::userpass_plaintext("oauth2", token)
+    });
+
+    let mut fo = FetchOptions::new();
+    fo.remote_callbacks(cb);
+
+    let mut builder = git2::build::RepoBuilder::new();
+    builder.fetch_options(fo);
+
+    builder.clone(url, std::path::Path::new(path))
 }
 
 #[tokio::main]
@@ -49,7 +64,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(repo) = repos.iter().find(|repo| repo.name == input) {
         println!("Cloning: {}", repo.name);
-        let _ = Repository::clone(&repo.clone_url, &repo.name)?;
+        // TODO: token 관련 unwrap이 실제 Option 타입과 맞지 않음
+        clone_with_auth(&repo.clone_url, &repo.name, args.token.as_deref().unwrap())?;
     } else {
         println!("!Repo not found");
     }
