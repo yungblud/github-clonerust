@@ -1,10 +1,12 @@
-use std::env;
+use std::{env, fs, io};
 
 use clap::Parser;
 use git2::{Cred, FetchOptions, RemoteCallbacks, Repository};
 use reqwest::header::{HeaderMap, USER_AGENT};
 use serde::Deserialize;
 use dialoguer::Input;
+use dirs::home_dir;
+use std::io::Write;
 
 #[derive(Parser)]
 struct Args {
@@ -16,6 +18,30 @@ struct Args {
 struct Repo {
     name: String,
     clone_url: String,
+}
+
+fn write_token_to_zshrc(token: &str) -> io::Result<()> {
+    let home_dir = home_dir().expect("Home directory not found");
+    let zshrc_path = home_dir.join(".zshrc");
+
+    let mut contents = String::new();
+
+    if zshrc_path.exists() {
+        contents = fs::read_to_string(zshrc_path.clone())?;
+    }
+
+    let mut lines: Vec<String> = contents.lines().map(|line| line.to_string()).collect();
+
+    lines.retain(|line| !line.trim_start().starts_with("export GITHUB_TOKEN="));
+
+    lines.push(format!(r#"export GITHUB_TOKEN="{}""#, token));
+
+    let mut file = fs::File::create(zshrc_path)?;
+    for line in lines {
+        writeln!(file, "{}", line)?;
+    }
+
+    Ok(())
 }
 
 fn clone_with_auth(url: &str, path: &str, token: &str) -> Result<Repository, git2::Error> {
@@ -35,7 +61,7 @@ fn clone_with_auth(url: &str, path: &str, token: &str) -> Result<Repository, git
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut github_token: String;
+    let github_token: String;
     match env::var("GITHUB_TOKEN") {
         Ok(token) => {
             github_token = token;
@@ -45,9 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_prompt("Enter the token")
             .interact_text()?;
             // TODO: ~/.zshrc에 덮어쓰는 것으로 변경
-            unsafe {
-                env::set_var("GITHUB_TOKEN", &token_input);
-            }
+            write_token_to_zshrc(&token_input)?;
             github_token = token_input;
         }
     };
