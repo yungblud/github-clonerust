@@ -8,6 +8,9 @@ use dialoguer::Input;
 struct Args {
     #[arg(short, long)]
     org: String,
+
+    #[arg(short, long)]
+    token: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -23,7 +26,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut headers = HeaderMap::new();
     headers.insert(USER_AGENT, "rust-cli/0.1".parse().unwrap());
 
-    let url = format!("https://api.github.com/orgs/{}/repos", args.org);
+    if let Some(token) = &args.token {
+        headers.insert(
+            reqwest::header::AUTHORIZATION,
+            format!("token {}", token).parse().unwrap(),
+        );
+    }
+
+    let max_per_page = 100;
+
+    let url = format!("https://api.github.com/orgs/{}/repos?per_page={}&type=all", args.org, max_per_page);
     let client = reqwest::Client::new();
     let repos: Vec<Repo> = client.get(&url).headers(headers).send().await?.json().await?;
 
