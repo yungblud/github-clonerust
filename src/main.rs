@@ -2,6 +2,7 @@ use clap::Parser;
 use git2::Repository;
 use reqwest::header::{HeaderMap, USER_AGENT};
 use serde::Deserialize;
+use dialoguer::Input;
 
 #[derive(Parser)]
 struct Args {
@@ -26,9 +27,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::Client::new();
     let repos: Vec<Repo> = client.get(&url).headers(headers).send().await?.json().await?;
 
-    for repo in repos {
+    let repo_names: Vec<String> = repos.iter().map(|repo| repo.name.clone()).collect();
+
+    println!("Available repos: {:?}", repo_names);
+
+    let input: String = Input::new()
+        .with_prompt("Enter the repo name to clone")
+        .interact_text()?;
+
+    if let Some(repo) = repos.iter().find(|repo| repo.name == input) {
         println!("Cloning: {}", repo.name);
         let _ = Repository::clone(&repo.clone_url, &repo.name)?;
+    } else {
+        println!("!Repo not found");
     }
 
     Ok(())
